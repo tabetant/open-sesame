@@ -1,5 +1,6 @@
 #include "address_map.h"
-#define BUFFER_SIZE 48000
+#define BUFFER_SIZE 8000 // 8000 for 1 second of audio at 8kHz
+#define SAMPLE_RATE 8000
 
 struct AUDIO_T
 {
