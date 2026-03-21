@@ -1,5 +1,3 @@
-#include <stdio.h>
-
 // The GPIO port JP1 on the DE1-SoC lives at this memory address.
 // Writing to this address is how we talk to anything plugged into the 40-pin header.
 #define GPIO_BASE 0xFF200060
@@ -162,43 +160,4 @@ void stop_motor(int motor_number) {
     GPIO_DATA |= enable_bit;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN
-// This is just a test to prove the motor works before you connect it
-// to the audio pipeline. Motor 0 spins forward, pauses, then spins backward.
-// ─────────────────────────────────────────────────────────────────────────────
-int main() {
-
-    // Always call this first — sets pin directions and makes sure nothing is running
-    setup_gpio();
-
-    // Let the user know what's about to happen
-    printf("Testing Motor 0 — spinning clockwise...\n");
-
-    // Start Motor 0 going clockwise (this is what will open your gate)
-    spin_motor(0, 1);
-
-    // Let it run for a bit — tune this number until the gate opens fully
-    delay(5000000);
-
-    // Stop the motor once it's done opening
-    printf("Stopping Motor 0...\n");
-    stop_motor(0);
-
-    // Brief pause so the motor fully comes to rest before reversing
-    delay(2000000);
-
-    // Now spin it the other way to close the gate back
-    printf("Spinning Motor 0 counter-clockwise...\n");
-    spin_motor(0, 0);
-
-    // Same wait — tune this to however long closing takes
-    delay(5000000);
-
-    // All done, stop everything
-    printf("All done — stopping.\n");
-    stop_all_motors();
-
-    // Return 0 to tell the OS (well, Nios V runtime) that everything went fine
-    return 0;
-}
+/* main() removed — motor functions are called from main.c */

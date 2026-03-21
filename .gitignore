@@ -1,0 +1,38 @@
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Audio samples (large binaries — regenerate locally if needed) ─────────────
+training/audiosamples/
+training/dataset/
+*.wav
+*.m4a
+*.mp3
+*.flac
+
+# ── Python environment ────────────────────────────────────────────────────────
+training/venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# ── ML training artifacts (reproducible by running train_voice_gate.py) ───────
+output/voice_gate.keras
+output/voice_gate.tflite
+output/voice_gate_model.h
+output/training_plot.png
+output/normalization.txt
+
+# ── VSCode / workspace ────────────────────────────────────────────────────────
+.vscode/
+*.code-workspace
+
+# ── Nios V / Monitor Program build artifacts ──────────────────────────────────
+*.o
+*.elf
+*.hex
+*.map
+*.objdump
+Debug/
+Release/
