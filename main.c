@@ -151,6 +151,25 @@ static void open_and_close_gate(void)
 }
 
 /* ── Main ───────────────────────────────────────────────────────────────── */
+/*
+ * ── Diagnostic LED map ───────────────────────────────────────────────────────
+ *
+ *  LED[0]  ON at boot          — program started, codec initialised
+ *  LED[1]  Pulses              — audio samples are flowing from the FIFO
+ *  LED[2]  ON                  — 1 s of audio buffered, inference window ready
+ *  LED[3]  ON                  — MFCC extraction complete
+ *  LED[4]  ON                  — CNN inference complete
+ *  LED[5]  ON  prob > 0.50     — weak match (model leaning toward "open sesame")
+ *  LED[6]  ON  prob > 0.70     — moderate confidence
+ *  LED[7]  ON  prob > 0.80     — strong confidence
+ *  LED[8]  ON  prob > 0.90     — threshold met, would trigger gate
+ *  LED[9]  ON  prob > 0.95     — very high confidence detection
+ *
+ *  After each inference cycle the LEDs reset to LED[0] only (idle).
+ *  If the program hangs, the last LED that stayed lit shows where it stopped.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 int main(void)
 {
     int i;
@@ -159,18 +178,16 @@ int main(void)
     stop_all_motors();
     init_audio_codec();
 
-    /* Signal ready via LEDs */
     volatile unsigned int *leds = (volatile unsigned int *)LED_BASE;
-    *leds = 0x1;   /* LED[0] on = codec initialised, waiting for command */
+
+    /* LED[0] on = codec initialised, waiting */
+    *leds = 0x001;
 
     while (1) {
-        /* Poll audio FIFO — rarc is non-zero when at least one sample is ready */
+        /* Poll audio FIFO */
         if (audio->rarc) {
-            /* WM8731 via DE1-SoC audio core: 16-bit sample is left-justified
-             * in a 32-bit register (bits 31:16). Shift to get signed 16-bit,
-             * then normalise to [-1.0, 1.0]. */
             int raw_left = audio->ldata;
-            (void)audio->rdata;   /* discard right channel */
+            (void)audio->rdata;
 
             float sample = (float)(raw_left >> 16) / 32768.0f;
 
@@ -178,32 +195,48 @@ int main(void)
             circ_write = (circ_write + 1) % CIRC_BUF_SIZE;
             new_samples++;
 
+            /* LED[1] pulses every 800 samples (~0.1 s) to show audio is flowing */
+            if ((new_samples & 0x31F) == 0)
+                *leds ^= 0x002;
+
             if (new_samples >= INFERENCE_STRIDE) {
                 new_samples = 0;
 
-                /* Copy the most recent AUDIO_WINDOW_LEN samples from the
-                 * circular buffer into a flat array for compute_mfcc().     */
+                /* LED[2] — inference window ready */
+                *leds = 0x005;
+
+                /* Build flat audio window from circular buffer */
                 int start = (circ_write - AUDIO_WINDOW_LEN + CIRC_BUF_SIZE)
                             % CIRC_BUF_SIZE;
                 for (i = 0; i < AUDIO_WINDOW_LEN; i++)
                     audio_window[i] = circ_buf[(start + i) % CIRC_BUF_SIZE];
 
-                /* MFCC extraction + normalization */
+                /* MFCC extraction */
                 compute_mfcc(audio_window, mfcc_buf);
+
+                /* LED[3] — MFCC done */
+                *leds = 0x009;
 
                 /* CNN inference */
                 run_inference((const float (*)[N_FRAMES])mfcc_buf, prob);
 
-                /* Trigger gate if confidence > 0.9 */
-                if (prob[1] > 0.9f) {
-                    *leds = 0x3FF;          /* all LEDs on = gate triggered */
-                    open_and_close_gate();
-                    *leds = 0x1;            /* back to idle state           */
+                /* LED[4] — inference done */
+                *leds = 0x011;
 
-                    /* Flush accumulated samples during gate operation so
-                     * the gate doesn't immediately re-trigger.             */
-                    new_samples = 0;
-                }
+                /* LEDs 5-9: confidence meter */
+                unsigned int conf_leds = 0x011;
+                if (prob[1] > 0.50f) conf_leds |= (1 << 5);
+                if (prob[1] > 0.70f) conf_leds |= (1 << 6);
+                if (prob[1] > 0.80f) conf_leds |= (1 << 7);
+                if (prob[1] > 0.90f) conf_leds |= (1 << 8);
+                if (prob[1] > 0.95f) conf_leds |= (1 << 9);
+                *leds = conf_leds;
+
+                /* Hold for ~0.3 s so you can see the confidence LEDs */
+                delay(3000000);
+
+                /* Reset to idle */
+                *leds = 0x001;
             }
         }
     }
