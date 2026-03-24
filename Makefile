@@ -88,9 +88,9 @@ $(basename $(MAIN)).elf: $(OBJS)
 	@echo Linking
 	@$(BASH) 'printf "$(LD) "'
 	$(DEF_TEXT)
-	@echo $(LDFLAGS) $(OBJS) -o $@
+	@echo $(OBJS) $(LDFLAGS) -o $@
 	@$(BASH) 'printf "\n"'
-	@$(BASH) 'cd "$(CURDIR)"; $(CYGWIN_PATH); $(LD) $(LDFLAGS) $(OBJS) -o $@'
+	@$(BASH) 'cd "$(CURDIR)"; $(CYGWIN_PATH); $(LD) $(OBJS) $(LDFLAGS) -o $@'
 
 %.c.o: %.c $(HDRS)
 	@$(BASH) 'cd "$(CURDIR)"; $(RM) $@'
