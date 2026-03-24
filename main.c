@@ -189,7 +189,7 @@ int main(void)
             int raw_left = audio->ldata;
             (void)audio->rdata;
 
-            float sample = (float)(raw_left >> 16) / 32768.0f;
+            float sample = (float)(short)(raw_left & 0xFFFF) / 32768.0f;
 
             circ_buf[circ_write] = sample;
             circ_write = (circ_write + 1) % CIRC_BUF_SIZE;
