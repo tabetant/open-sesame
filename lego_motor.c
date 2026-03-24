@@ -1,3 +1,5 @@
+#include "lego_motor.h"
+
 // The GPIO port JP1 on the DE1-SoC lives at this memory address.
 // Writing to this address is how we talk to anything plugged into the 40-pin header.
 #define GPIO_BASE 0xFF200060
