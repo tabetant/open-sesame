@@ -214,7 +214,7 @@ static void init_audio_codec(void)
 
 /* ── Circular buffer (2 seconds = 16000 samples at 8 kHz) ──────────────── */
 #define CIRC_BUF_SIZE  16000
-#define INFERENCE_STRIDE 24000  /* run inference every 3 seconds of new audio */
+#define INFERENCE_STRIDE 8000   /* run inference every 1 second of new audio */
 
 /* Audio window fed to MFCC: N_FFT + HOP_LENGTH*(N_FRAMES-1) = 15880 samples */
 #define AUDIO_WINDOW_LEN  15880
