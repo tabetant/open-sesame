@@ -273,6 +273,10 @@ int main(void)
     stop_all_motors();
     init_audio_codec();
 
+    /* Flush stale samples from the ADC FIFO so they don't get passed through
+     * to the speakers as garbage at startup. */
+    while (audio->rarc) { (void)audio->ldata; (void)audio->rdata; }
+
     volatile unsigned int *leds = (volatile unsigned int *)LED_BASE;
 
     /* LED[0] on = codec initialised, waiting */
