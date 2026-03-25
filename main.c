@@ -64,6 +64,17 @@ static void jtag_puts(const char *s)
     while (*s) jtag_putc(*s++);
 }
 
+/* Print a signed integer — used for audio sample dumps. */
+static void jtag_put_int(int n)
+{
+    char buf[7];
+    int i = 0;
+    if (n == 0) { jtag_putc('0'); return; }
+    if (n < 0)  { jtag_putc('-'); n = -n; }
+    while (n > 0) { buf[i++] = '0' + (char)(n % 10); n /= 10; }
+    while (i > 0) jtag_putc(buf[--i]);
+}
+
 /*
  * Print a float as "X.XX" — covers the full [0.00, 1.00] confidence range.
  * No libc dependency; avoids pulling in printf / sprintf.
@@ -245,6 +256,32 @@ static void open_and_close_gate(void)
     stop_motor(0);
 }
 
+/* ── Audio dump (KEY[0]) ────────────────────────────────────────────────── */
+/*
+ * dump_audio_window()
+ *
+ * Dumps the last CIRC_BUF_SIZE samples (2 s of audio) to the JTAG UART as
+ * signed 16-bit integers, one per line, wrapped in START/END markers.
+ *
+ * On the PC: redirect nios2-terminal output to a file, press KEY[0] after
+ * speaking, then run training/capture_wav.py to convert to a .wav file.
+ *
+ * KEY[0] is active-low (reads 0 when pressed).
+ */
+static volatile unsigned int *keys = (volatile unsigned int *)KEY_BASE;
+
+static void dump_audio_window(void)
+{
+    int i;
+    jtag_puts("\r\nDUMP_START\r\n");
+    for (i = 0; i < CIRC_BUF_SIZE; i++) {
+        int sample = (int)(circ_buf[(circ_write + i) % CIRC_BUF_SIZE] * 32767.0f);
+        jtag_put_int(sample);
+        jtag_puts("\r\n");
+    }
+    jtag_puts("DUMP_END\r\n");
+}
+
 /* ── Main ───────────────────────────────────────────────────────────────── */
 /*
  * ── Diagnostic LED map ───────────────────────────────────────────────────────
@@ -268,6 +305,7 @@ static void open_and_close_gate(void)
 int main(void)
 {
     int i;
+    int key_prev = 1;   /* KEY[0] last state — 1 = released (active-low) */
 
     setup_gpio();
     stop_all_motors();
@@ -291,6 +329,15 @@ int main(void)
     jtag_puts("Audio codec initialised. LISTENING...\r\n");
 
     while (1) {
+        /* KEY[0] — dump last 2 s of audio to JTAG UART for training capture */
+        int key_now = (*keys & 0x1);
+        if (key_now == 0 && key_prev == 1) {
+            jtag_puts("Dumping audio buffer...\r\n");
+            dump_audio_window();
+            jtag_puts("Done. Run capture_wav.py on the output file.\r\n");
+        }
+        key_prev = key_now;
+
         /* Poll audio FIFO */
         if (audio->rarc) {
             int raw_left = audio->ldata;
