@@ -214,7 +214,7 @@ static void init_audio_codec(void)
 
 /* ── Circular buffer (2 seconds = 16000 samples at 8 kHz) ──────────────── */
 #define CIRC_BUF_SIZE  16000
-#define INFERENCE_STRIDE 8000   /* run inference every 1 second of new audio */
+#define INFERENCE_STRIDE 24000  /* run inference every 3 seconds of new audio */
 
 /* Audio window fed to MFCC: N_FFT + HOP_LENGTH*(N_FRAMES-1) = 15880 samples */
 #define AUDIO_WINDOW_LEN  15880
@@ -291,6 +291,12 @@ int main(void)
         if (audio->rarc) {
             int raw_left = audio->ldata;
             (void)audio->rdata;
+
+            /* Passthrough: write input straight to DAC so you can hear what
+             * the mic is picking up. wsrc/wslc guard against stalling if the
+             * output FIFO is full (e.g. during MFCC/inference). */
+            if (audio->wsrc) audio->ldata = raw_left;
+            if (audio->wslc) audio->rdata = raw_left;
 
             float sample = (float)(short)(raw_left & 0xFFFF) / 32768.0f;
 
