@@ -35,6 +35,101 @@ struct I2C_T {
     volatile unsigned int cmd_status;   /* 0x10 — command / status     */
 };
 
+/* ── JTAG UART ──────────────────────────────────────────────────────────── */
+/*
+ * The Nios JTAG UART exposes two 32-bit registers:
+ *   data    [offset 0x00]: write bits[7:0] to transmit a byte;
+ *                           bits[31:16] = RAVAIL (unread RX bytes)
+ *   control [offset 0x04]: bits[31:16] = WSPACE (free TX FIFO slots)
+ *
+ * jtag_putc() spins until there is room, then writes.  This is safe
+ * during normal operation; if no host is connected the FIFO drains
+ * slowly but the spin will eventually exit.
+ */
+struct JTAG_UART_T {
+    volatile unsigned int data;    /* [7:0]=TX byte, [15]=RVALID, [31:16]=RAVAIL */
+    volatile unsigned int control; /* [31:16]=WSPACE, [1]=WI, [0]=RI             */
+};
+
+static struct JTAG_UART_T *jtag = (struct JTAG_UART_T *)JTAG_UART_BASE;
+
+static void jtag_putc(char c)
+{
+    while (((jtag->control >> 16) & 0xFFFF) == 0);
+    jtag->data = (unsigned char)c;
+}
+
+static void jtag_puts(const char *s)
+{
+    while (*s) jtag_putc(*s++);
+}
+
+/*
+ * Print a float as "X.XX" — covers the full [0.00, 1.00] confidence range.
+ * No libc dependency; avoids pulling in printf / sprintf.
+ */
+static void jtag_put_float(float f)
+{
+    int whole = (int)f;
+    int frac  = (int)((f - (float)whole) * 100.0f + 0.5f);
+    if (frac >= 100) { whole++; frac = 0; }
+    jtag_putc('0' + (char)whole);
+    jtag_putc('.');
+    jtag_putc('0' + (char)(frac / 10));
+    jtag_putc('0' + (char)(frac % 10));
+}
+
+/* ── VGA character buffer ───────────────────────────────────────────────── */
+/*
+ * The DE1-SoC character buffer is 80 cols × 60 rows.
+ * Cell address: FPGA_CHAR_BASE + 2*(row*80 + col)
+ * Only the low byte of each 16-bit cell is displayed (ASCII).
+ */
+#define VGA_COLS  80
+#define VGA_ROWS  60
+
+static volatile char *vga_char_buf = (volatile char *)FPGA_CHAR_BASE;
+
+static void vga_clear(void)
+{
+    int r, c;
+    for (r = 0; r < VGA_ROWS; r++)
+        for (c = 0; c < VGA_COLS; c++)
+            *(vga_char_buf + 2 * (r * VGA_COLS + c)) = ' ';
+}
+
+static void vga_puts_at(int row, int col, const char *s)
+{
+    while (*s && col < VGA_COLS) {
+        *(vga_char_buf + 2 * (row * VGA_COLS + col)) = *s++;
+        col++;
+    }
+}
+
+/* Clear one VGA row to spaces, then write s from column 0. */
+static void vga_status(int row, const char *s)
+{
+    int c;
+    for (c = 0; c < VGA_COLS; c++)
+        *(vga_char_buf + 2 * (row * VGA_COLS + c)) = ' ';
+    vga_puts_at(row, 0, s);
+}
+
+/* Write "X.XX" at (row, col) on the VGA character buffer. */
+static void vga_put_float_at(int row, int col, float f)
+{
+    int whole = (int)f;
+    int frac  = (int)((f - (float)whole) * 100.0f + 0.5f);
+    if (frac >= 100) { whole++; frac = 0; }
+    char buf[5];
+    buf[0] = '0' + (char)whole;
+    buf[1] = '.';
+    buf[2] = '0' + (char)(frac / 10);
+    buf[3] = '0' + (char)(frac % 10);
+    buf[4] = '\0';
+    vga_puts_at(row, col, buf);
+}
+
 /* I2C command/status bits */
 #define I2C_START    0x90   /* STA + WR */
 #define I2C_WRITE    0x10   /* WR       */
@@ -183,6 +278,14 @@ int main(void)
     /* LED[0] on = codec initialised, waiting */
     *leds = 0x001;
 
+    /* ── Boot message ─────────────────────────────────────────────────── */
+    vga_clear();
+    vga_status(0, "=== Open Sesame Gate ===");
+    vga_status(1, "LISTENING...");
+
+    jtag_puts("\r\n=== Open Sesame Gate ===\r\n");
+    jtag_puts("Audio codec initialised. LISTENING...\r\n");
+
     while (1) {
         /* Poll audio FIFO */
         if (audio->rarc) {
@@ -204,6 +307,8 @@ int main(void)
 
                 /* LED[2] — inference window ready */
                 *leds = 0x005;
+                jtag_puts("\r\nPROCESSING...\r\n");
+                vga_status(1, "PROCESSING...");
 
                 /* Build flat audio window from circular buffer */
                 int start = (circ_write - AUDIO_WINDOW_LEN + CIRC_BUF_SIZE)
@@ -216,12 +321,22 @@ int main(void)
 
                 /* LED[3] — MFCC done */
                 *leds = 0x009;
+                jtag_puts("  MFCC extraction done\r\n");
+                vga_status(1, "MFCC done, running CNN...");
 
                 /* CNN inference */
                 run_inference((const float (*)[N_FRAMES])mfcc_buf, prob);
 
                 /* LED[4] — inference done */
                 *leds = 0x011;
+                jtag_puts("  CNN inference done\r\n");
+                jtag_puts("  Confidence: ");
+                jtag_put_float(prob[1]);
+                jtag_puts("\r\n");
+
+                /* VGA row 1: confidence value */
+                vga_status(1, "Confidence: ");
+                vga_put_float_at(1, 12, prob[1]);
 
                 /* LEDs 5-9: confidence meter */
                 unsigned int conf_leds = 0x011;
@@ -232,11 +347,19 @@ int main(void)
                 if (prob[1] > 0.95f) conf_leds |= (1 << 9);
                 *leds = conf_leds;
 
+                /* Signal detected — LEDs already show confidence level above */
+                if (prob[1] > 0.90f) {
+                    jtag_puts("  *** TRIGGERED! ***\r\n");
+                    vga_status(1, "*** TRIGGERED! ***");
+                }
+
                 /* Hold for ~0.3 s so you can see the confidence LEDs */
                 delay(3000000);
 
                 /* Reset to idle */
                 *leds = 0x001;
+                jtag_puts("LISTENING...\r\n");
+                vga_status(1, "LISTENING...");
             }
         }
     }
