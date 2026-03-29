@@ -129,11 +129,6 @@ static float circ_buf[CIRC_BUF_SIZE];
 static int   circ_write  = 0;
 static int   new_samples = 0;
 
-/* First-order IIR high-pass for DC removal (~6 Hz cutoff at 8 kHz).
- * Matches the per-clip mean subtraction done during training. */
-static float dc_prev_x = 0.0f;
-static float dc_prev_y = 0.0f;
-
 /* MFCC feature buffer and flat audio window — static to stay off the stack */
 static float mfcc_buf[N_MFCC][N_FRAMES];
 static float audio_window[AUDIO_WINDOW_LEN];
@@ -197,11 +192,7 @@ int main(void)
             int raw_left = audio->ldata;
             (void)audio->rdata;
 
-            float raw_f = (float)raw_left / 2147483648.0f;
-            float sample = raw_f - dc_prev_x + 0.995f * dc_prev_y;
-            dc_prev_x = raw_f;
-            dc_prev_y = sample;
-
+            float sample = (float)raw_left / 2147483648.0f;
             circ_buf[circ_write] = sample;
             circ_write = (circ_write + 1) % CIRC_BUF_SIZE;
             new_samples++;
@@ -222,16 +213,23 @@ int main(void)
                 for (i = 0; i < AUDIO_WINDOW_LEN; i++)
                     audio_window[i] = circ_buf[(start + i) % CIRC_BUF_SIZE];
 
-                /* Clip to [-1, 1] to match training preprocessing */
+                /* DC removal: subtract mean then clip to [-1,1].
+                 * Exactly matches prepare_data.py: audio -= np.mean(audio);
+                 * audio = np.clip(audio, -1.0, 1.0) */
+                float win_mean = 0.0f;
+                for (i = 0; i < AUDIO_WINDOW_LEN; i++)
+                    win_mean += audio_window[i];
+                win_mean /= AUDIO_WINDOW_LEN;
+
                 float sum_abs = 0.0f;
-                float amin = audio_window[0], amax = audio_window[0];
+                float amin = 1.0f, amax = -1.0f;
                 for (i = 0; i < AUDIO_WINDOW_LEN; i++) {
-                    float v = audio_window[i];
-                    if (v < amin) amin = v;
-                    if (v > amax) amax = v;
+                    float v = audio_window[i] - win_mean;
                     if (v > 1.0f) v = 1.0f;
                     else if (v < -1.0f) v = -1.0f;
                     audio_window[i] = v;
+                    if (v < amin) amin = v;
+                    if (v > amax) amax = v;
                     if (v < 0) sum_abs -= v; else sum_abs += v;
                 }
                 float avg_abs = sum_abs / AUDIO_WINDOW_LEN;
