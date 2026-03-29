@@ -10,6 +10,7 @@
  * On-chip SRAM is used only for stack and small locals.
  */
 
+#include <stdio.h>
 #include "address_map.h"
 #include "lego_motor.h"
 #include "mfcc.h"
@@ -219,11 +220,29 @@ int main(void)
                 for (i = 0; i < AUDIO_WINDOW_LEN; i++)
                     audio_window[i] = circ_buf[(start + i) % CIRC_BUF_SIZE];
 
+                /* Audio level check */
+                float sum_abs = 0.0f;
+                float amin = audio_window[0], amax = audio_window[0];
+                for (i = 0; i < AUDIO_WINDOW_LEN; i++) {
+                    float v = audio_window[i];
+                    if (v < 0) sum_abs -= v; else sum_abs += v;
+                    if (v < amin) amin = v;
+                    if (v > amax) amax = v;
+                }
+                float avg_abs = sum_abs / AUDIO_WINDOW_LEN;
+                printf("audio: min=%.4f max=%.4f avg_abs=%.4f\n",
+                       (double)amin, (double)amax, (double)avg_abs);
+
                 /* MFCC extraction */
                 compute_mfcc(audio_window, mfcc_buf);
 
                 /* LED[3] — MFCC done */
                 *leds = 0x009;
+
+                printf("mfcc[0][0]=%.2f [6][49]=%.2f [12][98]=%.2f\n",
+                       (double)mfcc_buf[0][0],
+                       (double)mfcc_buf[6][49],
+                       (double)mfcc_buf[12][98]);
 
                 /* CNN inference */
                 run_inference((const float (*)[N_FRAMES])mfcc_buf, prob);
@@ -240,10 +259,15 @@ int main(void)
                 if (prob[1] > 0.95f) conf_leds |= (1 << 9);
                 *leds = conf_leds;
 
+                int p_neg = (int)(prob[0] * 100.0f);
+                int p_pos = (int)(prob[1] * 100.0f);
+                printf("neg=%d%%  pos=%d%%\n", p_neg, p_pos);
+
                 /* Hold for ~0.3 s so you can see the confidence LEDs */
                 delay(3000000);
 
                 if (prob[1] > 0.90f) {
+                    printf(">>> GATE TRIGGERED <<<\n");
                     open_and_close_gate();
                 }
 
