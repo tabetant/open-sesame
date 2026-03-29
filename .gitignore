@@ -36,3 +36,4 @@ output/normalization.txt
 *.objdump
 Debug/
 Release/
+.claude/

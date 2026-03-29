@@ -128,6 +128,11 @@ static float circ_buf[CIRC_BUF_SIZE];
 static int   circ_write  = 0;
 static int   new_samples = 0;
 
+/* First-order IIR high-pass for DC removal (~6 Hz cutoff at 8 kHz).
+ * Matches the per-clip mean subtraction done during training. */
+static float dc_prev_x = 0.0f;
+static float dc_prev_y = 0.0f;
+
 /* MFCC feature buffer and flat audio window — static to stay off the stack */
 static float mfcc_buf[N_MFCC][N_FRAMES];
 static float audio_window[AUDIO_WINDOW_LEN];
@@ -189,7 +194,10 @@ int main(void)
             int raw_left = audio->ldata;
             (void)audio->rdata;
 
-            float sample = (float)(short)(raw_left & 0xFFFF) / 32768.0f;
+            float raw_f = (float)raw_left / 2147483648.0f;
+            float sample = raw_f - dc_prev_x + 0.995f * dc_prev_y;
+            dc_prev_x = raw_f;
+            dc_prev_y = sample;
 
             circ_buf[circ_write] = sample;
             circ_write = (circ_write + 1) % CIRC_BUF_SIZE;
@@ -234,6 +242,10 @@ int main(void)
 
                 /* Hold for ~0.3 s so you can see the confidence LEDs */
                 delay(3000000);
+
+                if (prob[1] > 0.90f) {
+                    open_and_close_gate();
+                }
 
                 /* Reset to idle */
                 *leds = 0x001;
