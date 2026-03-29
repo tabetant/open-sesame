@@ -120,7 +120,7 @@ static void init_audio_codec(void)
 
 /* ── Circular buffer (2 seconds = 16000 samples at 8 kHz) ──────────────── */
 #define CIRC_BUF_SIZE  16000
-#define INFERENCE_STRIDE 8000   /* run inference every 1 second of new audio */
+#define INFERENCE_STRIDE 16000  /* run inference every 2 seconds of new audio */
 
 /* Audio window fed to MFCC: N_FFT + HOP_LENGTH*(N_FRAMES-1) = 15880 samples */
 #define AUDIO_WINDOW_LEN  15880
@@ -182,7 +182,9 @@ int main(void)
 
     setup_gpio();
     stop_all_motors();
-    init_audio_codec();
+    /* NOTE: Do NOT re-init the codec here. The FPGA design already configures
+     * the WM8731, and the training data was recorded without software codec init.
+     * Re-initializing would change sample rate / gain and cause a mismatch. */
 
     volatile unsigned int *leds = (volatile unsigned int *)LED_BASE;
 
@@ -220,14 +222,17 @@ int main(void)
                 for (i = 0; i < AUDIO_WINDOW_LEN; i++)
                     audio_window[i] = circ_buf[(start + i) % CIRC_BUF_SIZE];
 
-                /* Audio level check */
+                /* Clip to [-1, 1] to match training preprocessing */
                 float sum_abs = 0.0f;
                 float amin = audio_window[0], amax = audio_window[0];
                 for (i = 0; i < AUDIO_WINDOW_LEN; i++) {
                     float v = audio_window[i];
-                    if (v < 0) sum_abs -= v; else sum_abs += v;
                     if (v < amin) amin = v;
                     if (v > amax) amax = v;
+                    if (v > 1.0f) v = 1.0f;
+                    else if (v < -1.0f) v = -1.0f;
+                    audio_window[i] = v;
+                    if (v < 0) sum_abs -= v; else sum_abs += v;
                 }
                 float avg_abs = sum_abs / AUDIO_WINDOW_LEN;
                 printf("audio: min=%.4f max=%.4f avg_abs=%.4f\n",
