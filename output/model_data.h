@@ -13,8 +13,8 @@
 #define N_MFCC        13
 #define N_FRAMES      99
 #define N_BINS        101      /* N_FFT/2 + 1 */
-#define MFCC_MEAN     -1.24070024e+01f
-#define MFCC_STD      6.00819321e+01f
+#define MFCC_MEAN     -1.15050507e+01f
+#define MFCC_STD      5.81032524e+01f
 #define LOG_FLOOR     1e-6f
 
 /* ── MFCC precomputed tables ─────────────────────────────────────────────── */

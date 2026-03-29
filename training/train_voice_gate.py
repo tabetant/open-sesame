@@ -34,7 +34,7 @@ NOISE_FLOOR = 0.001
 
 # ── Audio preprocessing ───────────────────────────────────────────────────────
 
-def _pad_to_length(audio, target_len):
+def _random_crop(audio, target_len):
     """Randomly crop or noise-pad audio to exactly target_len samples."""
     if len(audio) >= target_len:
         start = np.random.randint(0, len(audio) - target_len + 1)
@@ -46,8 +46,31 @@ def _pad_to_length(audio, target_len):
     return buf
 
 
-def _extract_mfcc(audio):
-    audio = _pad_to_length(audio, TARGET_LENGTH)
+def _energy_crop(audio, target_len, jitter=0):
+    """Crop target_len samples centered on the loudest region.
+    Use jitter > 0 for augmentation (random offset from peak energy)."""
+    if len(audio) <= target_len:
+        pad_total = target_len - len(audio)
+        offset = pad_total // 2
+        buf = np.random.randn(target_len).astype(np.float32) * NOISE_FLOOR
+        buf[offset:offset + len(audio)] = audio
+        return buf
+
+    sq = audio.astype(np.float64) ** 2
+    cumsum = np.concatenate([[0], np.cumsum(sq)])
+    n = len(audio)
+    window_energy = cumsum[target_len:n + 1] - cumsum[:n - target_len + 1]
+    best_start = int(np.argmax(window_energy))
+
+    if jitter > 0:
+        shift = np.random.randint(-jitter, jitter + 1)
+        best_start = max(0, min(best_start + shift, n - target_len))
+
+    return audio[best_start:best_start + target_len].copy()
+
+
+def _to_mfcc(audio):
+    """Extract MFCC from already-cropped audio (exactly target_len samples)."""
     mfcc = librosa.feature.mfcc(
         y=audio, sr=SAMPLE_RATE,
         n_mfcc=N_MFCC, n_fft=N_FFT,
@@ -61,23 +84,11 @@ def _extract_mfcc(audio):
     return mfcc[..., np.newaxis]
 
 
-def _augment_audio(audio):
-    """Noise, volume shift, time shift on raw audio."""
-    audio = _pad_to_length(audio, TARGET_LENGTH)
-    audio = audio + np.random.uniform(0.001, 0.01) * np.random.randn(len(audio))
+def _augment(audio):
+    """Add noise and volume variation to already-cropped audio."""
+    audio = audio + np.random.uniform(0.001, 0.01) * np.random.randn(len(audio)).astype(np.float32)
     audio = audio * np.random.uniform(0.7, 1.3)
-    audio = np.roll(audio, np.random.randint(-1600, 1600))
-    return np.clip(audio, -1.0, 1.0)
-
-
-def preprocess(path):
-    audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
-    return _extract_mfcc(audio)
-
-
-def preprocess_augmented(path):
-    audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
-    return _extract_mfcc(_augment_audio(audio))
+    return np.clip(audio, -1.0, 1.0).astype(np.float32)
 
 
 # ── Load dataset ──────────────────────────────────────────────────────────────
@@ -101,26 +112,34 @@ assert neg_files, "No negative .wav files found in dataset/negative/"
 X, y, groups = [], [], []
 
 print(f"  {len(pos_files)} positive files (+ {AUGMENT_COPIES} augmented each)")
+print("  Using energy-based cropping for positives (centers on speech)")
 for path in pos_files:
     stem = os.path.splitext(os.path.basename(path))[0]
     group_id = f"pos_{stem}"
-    X.append(preprocess(path))
+    audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
+
+    X.append(_to_mfcc(_energy_crop(audio, TARGET_LENGTH)))
     y.append(1)
     groups.append(group_id)
     for _ in range(AUGMENT_COPIES):
-        X.append(preprocess_augmented(path))
+        cropped = _energy_crop(audio, TARGET_LENGTH, jitter=1600)
+        X.append(_to_mfcc(_augment(cropped)))
         y.append(1)
         groups.append(group_id)
 
 print(f"  {len(neg_files)} negative files (+ {AUGMENT_COPIES} augmented each)")
+print("  Using random cropping for negatives")
 for path in neg_files:
     stem = os.path.splitext(os.path.basename(path))[0]
     group_id = f"neg_{stem}"
-    X.append(preprocess(path))
+    audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
+
+    X.append(_to_mfcc(_random_crop(audio, TARGET_LENGTH)))
     y.append(0)
     groups.append(group_id)
     for _ in range(AUGMENT_COPIES):
-        X.append(preprocess_augmented(path))
+        cropped = _random_crop(audio, TARGET_LENGTH)
+        X.append(_to_mfcc(_augment(cropped)))
         y.append(0)
         groups.append(group_id)
 
