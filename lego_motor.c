@@ -97,10 +97,11 @@ void stop_all_motors() {
 // ─────────────────────────────────────────────────────────────────────────────
 void setup_gpio() {
 
+    GPIO_DATA = ALL_MOTOR_PINS;
     // Set GP0 through GP9 as outputs by writing 1s into the direction register.
     // We use |= so we don't accidentally mess with bits beyond GP9.
     GPIO_DIR |= ALL_MOTOR_PINS;
-
+    GPIO_DATA = ALL_MOTOR_PINS;
     // Now disable all motors as a safety measure — we don't want anything
     // randomly spinning the moment the board powers up.
     stop_all_motors();
