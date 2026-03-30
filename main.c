@@ -250,6 +250,8 @@ int main(void)
 
                 /* LEDs 5-9: confidence meter */
                 unsigned int conf_leds = 0x011;
+                if (prob[1] > 0.27f) open_and_close_gate();
+                
                 if (prob[1] > 0.50f) conf_leds |= (1 << 5);
                 if (prob[1] > 0.70f) conf_leds |= (1 << 6);
                 if (prob[1] > 0.80f) conf_leds |= (1 << 7);
