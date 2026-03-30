@@ -137,12 +137,13 @@ static float prob[2];
 /* ── Gate control ───────────────────────────────────────────────────────── */
 /* Tune ROTATE_90_DELAY on real hardware until the motor turns exactly 90°.
  * 1 count ≈ 1 cycle at ~100 MHz.  Start with 25000000 (~0.25 s) and adjust. */
-#define ROTATE_90_DELAY  25000000
+#define ROTATE_90_DELAY  375000
 
 static void rotate_90(void)
 {
     spin_motor(0, 1);
     delay(ROTATE_90_DELAY);
+    spin_motor(0, -1);
     stop_motor(0);
 }
 
@@ -170,8 +171,8 @@ int main(void)
 {
     int i;
 
+
     setup_gpio();
-    stop_all_motors();
     /* NOTE: Do NOT re-init the codec here. The FPGA design already configures
      * the WM8731, and the training data was recorded without software codec init.
      * Re-initializing would change sample rate / gain and cause a mismatch. */
@@ -250,7 +251,7 @@ int main(void)
 
                 /* LEDs 5-9: confidence meter */
                 unsigned int conf_leds = 0x011;
-                if (prob[1] > 0.27f) open_and_close_gate();
+                if (prob[1] > 0.27f) rotate_90();
                 
                 if (prob[1] > 0.50f) conf_leds |= (1 << 5);
                 if (prob[1] > 0.70f) conf_leds |= (1 << 6);
