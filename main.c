@@ -135,19 +135,14 @@ static float audio_window[AUDIO_WINDOW_LEN];
 static float prob[2];
 
 /* ── Gate control ───────────────────────────────────────────────────────── */
-/* Tune these values on real hardware: 1 count ≈ 1 cycle at ~100 MHz.
- * Start with OPEN_DELAY=50000000 (~0.5 s) and increase until gate fully opens. */
-#define OPEN_DELAY  50000000
-#define HOLD_DELAY  20000000
+/* Tune ROTATE_90_DELAY on real hardware until the motor turns exactly 90°.
+ * 1 count ≈ 1 cycle at ~100 MHz.  Start with 25000000 (~0.25 s) and adjust. */
+#define ROTATE_90_DELAY  25000000
 
-static void open_and_close_gate(void)
+static void rotate_90(void)
 {
-    spin_motor(0, 1);       /* open  — clockwise     */
-    delay(OPEN_DELAY);
-    stop_motor(0);
-    delay(HOLD_DELAY);
-    spin_motor(0, 0);       /* close — counter-clockwise */
-    delay(OPEN_DELAY);
+    spin_motor(0, 1);
+    delay(ROTATE_90_DELAY);
     stop_motor(0);
 }
 
@@ -269,9 +264,9 @@ int main(void)
                 /* Hold for ~0.3 s so you can see the confidence LEDs */
                 delay(3000000);
 
-                if (prob[1] > 0.90f) {
-                    printf(">>> GATE TRIGGERED <<<\n");
-                    open_and_close_gate();
+                if (prob[1] > 0.27f) {
+                    printf(">>> MOTOR 90 deg <<<\n");
+                    rotate_90();
                 }
 
                 /* Reset to idle */
