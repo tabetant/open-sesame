@@ -1,8 +1,8 @@
 INSTALL	:= C:/intelFPGA/QUARTUS_Lite_V23.1
 
 MAIN	:= main.c
-HDRS	:= address_map.h inference.h mfcc.h lego_motor.h output/model_data.h
-SRCS	:= main.c mfcc.c inference.c lego_motor.c output/model_data.c
+HDRS	:= address_map.h inference.h mfcc.h lego_motor.h vga_display.h output/model_data.h
+SRCS	:= main.c mfcc.c inference.c lego_motor.c vga_display.c output/model_data.c
 
 SHELL	:= cmd.exe
 

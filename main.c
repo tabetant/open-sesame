@@ -15,6 +15,7 @@
 #include "lego_motor.h"
 #include "mfcc.h"
 #include "inference.h"
+#include "vga_display.h"
 
 /* ── Audio hardware ─────────────────────────────────────────────────────── */
 struct AUDIO_T {
@@ -177,10 +178,13 @@ int main(void)
      * the WM8731, and the training data was recorded without software codec init.
      * Re-initializing would change sample rate / gain and cause a mismatch. */
 
+    vga_init();
+
     volatile unsigned int *leds = (volatile unsigned int *)LED_BASE;
 
     /* LED[0] on = codec initialised, waiting */
     *leds = 0x001;
+    vga_state_listening();
 
     while (1) {
         /* Poll audio FIFO */
@@ -202,6 +206,7 @@ int main(void)
 
                 /* LED[2] — inference window ready */
                 *leds = 0x005;
+                vga_state_processing();
 
                 /* Build flat audio window from circular buffer */
                 int start = (circ_write - AUDIO_WINDOW_LEN + CIRC_BUF_SIZE)
@@ -251,8 +256,6 @@ int main(void)
 
                 /* LEDs 5-9: confidence meter */
                 unsigned int conf_leds = 0x011;
-                if (prob[1] > 0.27f) rotate_90();
-                
                 if (prob[1] > 0.50f) conf_leds |= (1 << 5);
                 if (prob[1] > 0.70f) conf_leds |= (1 << 6);
                 if (prob[1] > 0.80f) conf_leds |= (1 << 7);
@@ -264,16 +267,17 @@ int main(void)
                 int p_pos = (int)(prob[1] * 100.0f);
                 printf("neg=%d%%  pos=%d%%\n", p_neg, p_pos);
 
-                /* Hold for ~0.3 s so you can see the confidence LEDs */
-                delay(3000000);
-
                 if (prob[1] > 0.27f) {
                     printf(">>> MOTOR 90 deg <<<\n");
+                    vga_state_success();   /* green flash + chime + 2 s hold */
                     rotate_90();
+                } else {
+                    vga_state_failure();   /* red flash + rejection tone + 2 s hold */
                 }
 
                 /* Reset to idle */
                 *leds = 0x001;
+                vga_state_listening();
             }
         }
     }
