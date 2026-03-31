@@ -198,8 +198,10 @@ int main(void)
             new_samples++;
 
             /* LED[1] pulses every 800 samples (~0.1 s) to show audio is flowing */
-            if ((new_samples & 0x31F) == 0)
+            if ((new_samples & 0x31F) == 0) {
                 *leds ^= 0x002;
+                vga_update_listening(new_samples, INFERENCE_STRIDE);
+            }
 
             if (new_samples >= INFERENCE_STRIDE) {
                 new_samples = 0;

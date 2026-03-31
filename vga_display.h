@@ -26,6 +26,7 @@
 /* State machine — call these from main.c */
 void vga_init(void);              /* call once at boot after setup_gpio()  */
 void vga_state_listening(void);   /* idle / waiting for voice             */
+void vga_update_listening(int samples, int total); /* call every ~800 samples to update countdown bar */
 void vga_state_processing(void);  /* CNN is running (~90 s)               */
 void vga_state_success(void);     /* prob > 0.27 — holds ~2 s             */
 void vga_state_failure(void);     /* prob <= 0.27 — holds ~2 s            */
