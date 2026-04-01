@@ -341,39 +341,49 @@ void vga_update_listening(int samples, int total)
 
 /* ── STATE 2: PROCESSING ────────────────────────────────────────────────── */
 /*
- * phase 0 — called once before MFCC  (long computation ahead)
- *   Shows first thinking word, dot "."
- * phase 1 — called once before CNN   (long computation ahead)
- *   Shows second thinking word, dot ".."
+ * Call sequence each inference attempt:
+ *   vga_state_processing(0)  ← before MFCC  (screen shown during MFCC)
+ *   vga_state_processing(1)  ← after MFCC   + vga_pause(5000)
+ *   vga_state_processing(2)  ← mid-wait     + vga_pause(5000)
+ *   vga_state_processing(3)  ← before CNN   (screen shown during CNN)
  *
- * Dots are tied directly to phase, not a persistent counter, so they always
- * read "." on phase 0 and ".." on phase 1 regardless of how many attempts
- * have been made.  thinking_index advances by 2 after phase 1 so each
- * attempt cycles to a fresh pair of words.
+ * phase % 3 selects the dot string: 0→"." 1→".." 2→"..."
+ * thinking_index increments once per call, cycling through all 10 words.
+ * Reset to 0 in vga_state_success/failure.
  */
 void vga_state_processing(int phase)
 {
-    static const char *dots[2] = { ".  ", ".." };
-    const char *word;
-    int freq, buf;
-
-    if (phase == 0) {
-        word = thinking_words[thinking_index % NUM_THINKING_WORDS];
-        freq = proc_freqs[thinking_index % 3];
-    } else {
-        word = thinking_words[(thinking_index + 1) % NUM_THINKING_WORDS];
-        freq = proc_freqs[(thinking_index + 1) % 3];
-        thinking_index += 2;   /* advance past this pair for next attempt */
-    }
+    static const char *dots[] = { ".  ", ".. ", "..." };
+    const char *word = thinking_words[thinking_index % NUM_THINKING_WORDS];
+    int freq = proc_freqs[thinking_index % 3];
+    int buf;
 
     for (buf = 0; buf < 2; buf++) {
         clear_screen(COLOR_PURPLE);
-        draw_string_centered(90,  word,                     COLOR_WHITE, 2);
-        draw_string_centered(115, dots[phase < 2 ? phase : 1], COLOR_CYAN, 2);
+        draw_string_centered(90,  word,            COLOR_WHITE, 2);
+        draw_string_centered(115, dots[phase % 3], COLOR_CYAN,  2);
         wait_for_vsync();
         pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     }
+    thinking_index++;
     play_tone(freq, 80);
+}
+
+/* ── Accurate silent pause using audio FIFO as clock ───────────────────── */
+/*
+ * The WM8731 consumes exactly 8000 samples/second at 8 kHz.
+ * Writing silence (zero) at that rate gives a calibrated delay
+ * with no busy-wait tuning required.
+ */
+void vga_pause(int duration_ms)
+{
+    int total = (8000 * duration_ms) / 1000;
+    int i;
+    for (i = 0; i < total; i++) {
+        while (!audio_hw->wsrc);
+        audio_hw->ldata = 0;
+        audio_hw->rdata = 0;
+    }
 }
 
 /* ── STATE 3: SUCCESS ───────────────────────────────────────────────────── */

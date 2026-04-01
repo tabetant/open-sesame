@@ -358,34 +358,32 @@ static void state_listening_animate(void)
     }
 }
 
-/* STATE 2 — phase 0 = before MFCC (word 1, dot "."), phase 1 = before CNN (word 2, dot "..") */
+/* STATE 2 — matches vga_display.c exactly: phase%3 → dots, thinking_index++ per call */
 static int thinking_index = 0;
 
 static void state_processing(int phase)
 {
-    static const char *dots[2] = { ".  ", ".." };
-    const char *word;
-    int freq, buf;
+    static const char *dots[] = { ".  ", ".. ", "..." };
+    const char *word = thinking_words[thinking_index % NUM_THINKING_WORDS];
+    int freq = proc_freqs[thinking_index % 3];
+    int buf;
 
-    if (phase == 0) {
-        word = thinking_words[thinking_index % NUM_THINKING_WORDS];
-        freq = proc_freqs[thinking_index % 3];
-    } else {
-        word = thinking_words[(thinking_index + 1) % NUM_THINKING_WORDS];
-        freq = proc_freqs[(thinking_index + 1) % 3];
-        thinking_index += 2;
-    }
-
-    printf("[STATE 2] phase=%d  %s  %s\n", phase, word, dots[phase]);
+    printf("[STATE 2] phase=%d  %s  %s\n", phase, word, dots[phase % 3]);
     for (buf = 0; buf < 2; buf++) {
         clear_screen(COLOR_PURPLE);
-        draw_string_centered(90,  word,       COLOR_WHITE, 2);
-        draw_string_centered(115, dots[phase], COLOR_CYAN, 2);
+        draw_string_centered(90,  word,            COLOR_WHITE, 2);
+        draw_string_centered(115, dots[phase % 3], COLOR_CYAN,  2);
         wait_for_vsync();
         pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     }
+    thinking_index++;
     play_tone(freq, 80);
-    busy_wait(6000000);
+}
+
+/* 5-second pause between phases — busy_wait in CPUlator (audio FIFO timing not reliable) */
+static void cpulator_pause_5s(void)
+{
+    busy_wait(50000000);   /* visible delay in simulator; tune if needed */
 }
 
 /* STATE 3 */
@@ -446,15 +444,19 @@ int main(void)
         state_listening_enter();
         state_listening_animate();   /* bar drains over ~20 frames */
 
-        /* STATE 2: simulate MFCC (phase 0) then CNN (phase 1), repeated n attempts */
-        n = (round % 2 == 0) ? 3 : 2;
+        /* STATE 2: 4 phases per attempt matching real board call sequence */
+        n = (round % 2 == 0) ? 2 : 1;
         printf("[ROUND %d] STATE 2: %d attempt(s)\n", round, n);
         *leds = 0x005;
         for (i = 0; i < n; i++) {
-            state_processing(0);          /* before MFCC: word A, dot "."  */
-            busy_wait(20000000);          /* simulate MFCC time            */
-            state_processing(1);          /* before CNN:  word B, dot ".." */
-            busy_wait(20000000);          /* simulate CNN time             */
+            state_processing(0);      /* word A, "."   — shown during MFCC */
+            busy_wait(15000000);      /* simulate MFCC                     */
+            state_processing(1);      /* word B, ".."  — 5 s pause         */
+            cpulator_pause_5s();
+            state_processing(2);      /* word C, "..." — 5 s pause         */
+            cpulator_pause_5s();
+            state_processing(3);      /* word D, "."   — shown during CNN  */
+            busy_wait(15000000);      /* simulate CNN                      */
         }
         *leds = 0x011;
 

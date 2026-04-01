@@ -148,6 +148,14 @@ static void rotate_90(void)
     stop_motor(0);
 }
 
+static void rotate_90_close(void)
+{
+    spin_motor(0, 0);          /* counter-clockwise — closes the gate */
+    delay(ROTATE_90_DELAY);
+    spin_motor(0, 1);          /* brief opposite to brake */
+    stop_motor(0);
+}
+
 /* ── Main ───────────────────────────────────────────────────────────────── */
 /*
  * ── Diagnostic LED map ───────────────────────────────────────────────────────
@@ -208,7 +216,7 @@ int main(void)
 
                 /* LED[2] — inference window ready */
                 *leds = 0x005;
-                vga_state_processing(0);   /* phase 0: before MFCC — shows word 1, dot "." */
+                vga_state_processing(0);   /* word 1, "."  — shown during MFCC */
 
                 /* Build flat audio window from circular buffer */
                 int start = (circ_write - AUDIO_WINDOW_LEN + CIRC_BUF_SIZE)
@@ -250,7 +258,11 @@ int main(void)
                        (double)mfcc_buf[6][49],
                        (double)mfcc_buf[12][98]);
 
-                vga_state_processing(1);   /* phase 1: before CNN — shows word 2, dot ".." */
+                vga_state_processing(1);   /* word 2, ".."  — shown for 5 s */
+                vga_pause(4920);           /* 4920 ms + 80 ms tone = 5 s   */
+                vga_state_processing(2);   /* word 3, "..." — shown for 5 s */
+                vga_pause(4920);
+                vga_state_processing(3);   /* word 4, "."  — shown during CNN */
 
                 /* CNN inference */
                 run_inference((const float (*)[N_FRAMES])mfcc_buf, prob);
@@ -273,15 +285,18 @@ int main(void)
 
                 if (prob[1] > 0.27f) {
                     printf(">>> MOTOR 90 deg <<<\n");
-                    vga_state_success();   /* green flash + chime + 2 s hold */
-                    rotate_90();
+                    vga_state_success();   /* green flash + chime (~550 ms) */
+                    rotate_90();           /* open gate immediately after chime */
                 } else {
-                    vga_state_failure();   /* red flash + rejection tone + 2 s hold */
+                    vga_state_failure();   /* red flash + rejection tone */
                 }
 
                 /* Reset to idle */
                 *leds = 0x001;
                 vga_state_listening();
+
+                if (prob[1] > 0.27f)
+                    rotate_90_close();     /* close gate once display is back to listening */
             }
         }
     }
