@@ -340,24 +340,39 @@ void vga_update_listening(int samples, int total)
 }
 
 /* ── STATE 2: PROCESSING ────────────────────────────────────────────────── */
-void vga_state_processing(void)
+/*
+ * phase 0 — called once before MFCC  (long computation ahead)
+ *   Shows first thinking word, dot "."
+ * phase 1 — called once before CNN   (long computation ahead)
+ *   Shows second thinking word, dot ".."
+ *
+ * Dots are tied directly to phase, not a persistent counter, so they always
+ * read "." on phase 0 and ".." on phase 1 regardless of how many attempts
+ * have been made.  thinking_index advances by 2 after phase 1 so each
+ * attempt cycles to a fresh pair of words.
+ */
+void vga_state_processing(int phase)
 {
-    static int dot_phase = 0;
-    static const char *dots[3] = { ".  ", ".. ", "..." };
-    const char *word = thinking_words[thinking_index % NUM_THINKING_WORDS];
-    int freq = proc_freqs[thinking_index % 3];
-    int buf;
+    static const char *dots[2] = { ".  ", ".." };
+    const char *word;
+    int freq, buf;
 
-    thinking_index++;
+    if (phase == 0) {
+        word = thinking_words[thinking_index % NUM_THINKING_WORDS];
+        freq = proc_freqs[thinking_index % 3];
+    } else {
+        word = thinking_words[(thinking_index + 1) % NUM_THINKING_WORDS];
+        freq = proc_freqs[(thinking_index + 1) % 3];
+        thinking_index += 2;   /* advance past this pair for next attempt */
+    }
 
     for (buf = 0; buf < 2; buf++) {
         clear_screen(COLOR_PURPLE);
-        draw_string_centered(90,  word,              COLOR_WHITE, 2);
-        draw_string_centered(115, dots[dot_phase % 3], COLOR_CYAN, 2);
+        draw_string_centered(90,  word,                     COLOR_WHITE, 2);
+        draw_string_centered(115, dots[phase < 2 ? phase : 1], COLOR_CYAN, 2);
         wait_for_vsync();
         pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     }
-    dot_phase++;
     play_tone(freq, 80);
 }
 
@@ -375,7 +390,7 @@ void vga_state_success(void)
     play_tone(523, 150);
     play_tone(659, 150);
     play_tone(784, 250);
-    busy_wait(140000000);
+    /* no busy_wait — motor fires immediately after return (~550 ms chime is enough hold) */
     thinking_index = 0;
 }
 

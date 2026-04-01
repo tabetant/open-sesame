@@ -358,19 +358,29 @@ static void state_listening_animate(void)
     }
 }
 
-/* STATE 2 */
-static void state_processing(int cycle)
-{
-    static const char *dots[3] = { ".  ", ".. ", "..." };
-    const char *word = thinking_words[cycle % NUM_THINKING_WORDS];
-    int freq = proc_freqs[cycle % 3];
-    int buf;
+/* STATE 2 — phase 0 = before MFCC (word 1, dot "."), phase 1 = before CNN (word 2, dot "..") */
+static int thinking_index = 0;
 
-    printf("[STATE 2] %s\n", word);
+static void state_processing(int phase)
+{
+    static const char *dots[2] = { ".  ", ".." };
+    const char *word;
+    int freq, buf;
+
+    if (phase == 0) {
+        word = thinking_words[thinking_index % NUM_THINKING_WORDS];
+        freq = proc_freqs[thinking_index % 3];
+    } else {
+        word = thinking_words[(thinking_index + 1) % NUM_THINKING_WORDS];
+        freq = proc_freqs[(thinking_index + 1) % 3];
+        thinking_index += 2;
+    }
+
+    printf("[STATE 2] phase=%d  %s  %s\n", phase, word, dots[phase]);
     for (buf = 0; buf < 2; buf++) {
         clear_screen(COLOR_PURPLE);
-        draw_string_centered(90,  word,            COLOR_WHITE, 2);
-        draw_string_centered(115, dots[cycle % 3], COLOR_CYAN,  2);
+        draw_string_centered(90,  word,       COLOR_WHITE, 2);
+        draw_string_centered(115, dots[phase], COLOR_CYAN, 2);
         wait_for_vsync();
         pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     }
@@ -393,7 +403,8 @@ static void state_success(void)
     play_tone(523, 150);
     play_tone(659, 150);
     play_tone(784, 250);
-    busy_wait(140000000);
+    /* no hold — matches real board behaviour where motor fires immediately after */
+    thinking_index = 0;
 }
 
 /* STATE 4 */
@@ -411,6 +422,7 @@ static void state_failure(void)
     play_tone(392, 200);
     play_tone(294, 300);
     busy_wait(150000000);
+    thinking_index = 0;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -434,12 +446,16 @@ int main(void)
         state_listening_enter();
         state_listening_animate();   /* bar drains over ~20 frames */
 
-        /* STATE 2: cycle through thinking words */
-        n = (round % 2 == 0) ? 5 : 3;
-        printf("[ROUND %d] STATE 2 x%d\n", round, n);
+        /* STATE 2: simulate MFCC (phase 0) then CNN (phase 1), repeated n attempts */
+        n = (round % 2 == 0) ? 3 : 2;
+        printf("[ROUND %d] STATE 2: %d attempt(s)\n", round, n);
         *leds = 0x005;
-        for (i = 0; i < n; i++)
-            state_processing(cycle++);
+        for (i = 0; i < n; i++) {
+            state_processing(0);          /* before MFCC: word A, dot "."  */
+            busy_wait(20000000);          /* simulate MFCC time            */
+            state_processing(1);          /* before CNN:  word B, dot ".." */
+            busy_wait(20000000);          /* simulate CNN time             */
+        }
         *leds = 0x011;
 
         /* STATE 3 or 4 alternating */

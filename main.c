@@ -208,7 +208,7 @@ int main(void)
 
                 /* LED[2] — inference window ready */
                 *leds = 0x005;
-                vga_state_processing();
+                vga_state_processing(0);   /* phase 0: before MFCC — shows word 1, dot "." */
 
                 /* Build flat audio window from circular buffer */
                 int start = (circ_write - AUDIO_WINDOW_LEN + CIRC_BUF_SIZE)
@@ -249,6 +249,8 @@ int main(void)
                        (double)mfcc_buf[0][0],
                        (double)mfcc_buf[6][49],
                        (double)mfcc_buf[12][98]);
+
+                vga_state_processing(1);   /* phase 1: before CNN — shows word 2, dot ".." */
 
                 /* CNN inference */
                 run_inference((const float (*)[N_FRAMES])mfcc_buf, prob);
