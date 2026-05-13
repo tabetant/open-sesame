@@ -64,7 +64,9 @@ Then rebuild with `make COMPILE`.
 
 Video of the gate opening: TBD.
 
-## 👤 Author
+## 👥 Team
 
-**Antoine Tabet**, UofT Computer Engineering · ECE243 (Computer Organization)
-[LinkedIn](https://linkedin.com/in/antoinetabetuoft) · [antoine.tabet@mail.utoronto.ca](mailto:antoine.tabet@mail.utoronto.ca) · [GitHub](https://github.com/tabetant)
+Built for **ECE243 (Computer Organization)** at UofT:
+
+- **Antoine Tabet** ([@tabetant](https://github.com/tabetant)) · [LinkedIn](https://linkedin.com/in/antoinetabetuoft) · [antoine.tabet@mail.utoronto.ca](mailto:antoine.tabet@mail.utoronto.ca)
+- **Mohamad Salman** ([@mohamadmsalman82](https://github.com/mohamadmsalman82))
